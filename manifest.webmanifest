@@ -1,0 +1,17 @@
+{
+  "name": "Přehled příjmů a výdajů",
+  "short_name": "Peníze",
+  "description": "Měsíční rozpočet, platby a společné nákupy.",
+  "lang": "cs",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1013",
+  "theme_color": "#0b1013",
+  "icons": [
+    { "src": "ikona-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "ikona-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "ikona-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
