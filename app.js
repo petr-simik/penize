@@ -511,11 +511,14 @@ function readLocal() {
 
 async function load() {
   let loaded = null;
-  try {
-    const res = await fetch('/api/data', { cache: 'no-store' });
-    const type = res.headers.get('content-type') || '';
-    if (res.ok && type.includes('json')) loaded = await res.json();
-  } catch { /* server tu není */ }
+  // Na GitHub Pages server z PC není – ani se na něj neptat.
+  if (!location.hostname.endsWith('github.io')) {
+    try {
+      const res = await fetch('/api/data', { cache: 'no-store' });
+      const type = res.headers.get('content-type') || '';
+      if (res.ok && type.includes('json')) loaded = await res.json();
+    } catch { /* server tu není */ }
+  }
 
   if (loaded) {
     storageMode = 'server';
