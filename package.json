@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Jen aby Node při testech (node --test app/test) četl soubory webu jako moduly, stejně jako prohlížeč."
+}

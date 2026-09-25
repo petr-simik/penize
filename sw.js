@@ -2,9 +2,9 @@
 // verze se projeví hned; z mezipaměti jen když síť není.
 // Data ani GitHub se tu neřeší – ty si hlídá aplikace sama.
 
-const CACHE = 'penize-mu323yke';
+const CACHE = 'penize-muhetwwz';
 const SHELL = [
-  './', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
+  './', 'index.html', 'styles.css', 'app.js', 'podnikani.js', 'dane.js', 'doklady.js', 'manifest.webmanifest',
   'favicon.svg', 'ikona-180.png', 'ikona-192.png', 'ikona-512.png',
   'fonts/schibsted-latin.woff2', 'fonts/schibsted-latin-ext.woff2',
 ];

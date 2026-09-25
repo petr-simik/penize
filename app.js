@@ -1,6 +1,7 @@
 /* ============================================================
    Přehled příjmů a výdajů – logika aplikace
    ============================================================ */
+import { createBusiness } from './podnikani.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -182,6 +183,7 @@ let data = null;
 let activeId = null;
 let view = 'mesic';
 let undoSnapshot = null;
+let biz = null;   // Podnikání (podnikani.js), založí se při startu
 
 const els = {
   rail: $('#rail'), railScrim: $('#railScrim'),
@@ -201,6 +203,7 @@ const els = {
   overviewTable: $('#overviewTable'),
   splitChart: $('#splitChart'),
   viewMesic: $('#viewMesic'), viewPrehled: $('#viewPrehled'), viewSpolecne: $('#viewSpolecne'),
+  viewPodnikani: $('#viewPodnikani'),
   sharedPeople: $('#sharedPeople'), sharedNote: $('#sharedNote'), sharedForm: $('#sharedForm'),
   sharedList: $('#sharedList'), sharedHistory: $('#sharedHistory'),
   sharedHistorySection: $('#sharedHistorySection'), sharedSettings: $('#sharedSettings'),
@@ -554,6 +557,8 @@ function markSaved() {
 
 function save({ now = false } = {}) {
   clearTimeout(saveTimer);
+  // Řádky propojené s Podnikáním se srovnají před každým uložením.
+  biz?.reconcile();
   markSaving();
   const run = async () => {
     if (saveInFlight) { saveTimer = setTimeout(run, 200); return; }
@@ -812,7 +817,8 @@ async function applySynced(json) {
   }
 }
 
-const hasContent = (d) => d.periods.some((p) => p.income.length || p.blocks.some((b) => b.items.length));
+const hasContent = (d) => d.periods.some((p) => p.income.length || p.blocks.some((b) => b.items.length))
+  || !!(d.business && ((d.business.income || []).length || (d.business.expenses || []).length));
 
 async function syncNow({ firstChoice = null } = {}) {
   const cfg = syncConfig();
@@ -859,6 +865,8 @@ async function syncNow({ firstChoice = null } = {}) {
         else syncAgain = true;                            // mezitím další úprava – sloučí se v dalším kole
       }
       setSyncState('ok');
+      // Doklady z podnikání jdou až po datech, ať se commity nepřetahují.
+      biz?.afterSync().catch(() => {});
       return;
     }
     throw new SyncError('GitHub se pořád mění, zkusím to za chvíli.', 'conflict');
@@ -938,6 +946,9 @@ function undo() {
    Vykreslení – levý panel a hlavička
    ------------------------------------------------------------ */
 function renderRail() {
+  // V Podnikání jsou vlevo roky místo období.
+  $('#obdobiTitle').textContent = view === 'podnikani' ? 'Roky' : 'Období';
+  if (view === 'podnikani') { biz.renderRail(els.periodList); return; }
   els.periodList.replaceChildren(...data.periods.map((p) => {
     const li = document.createElement('li');
     li.className = 'period-item' + (p.id === activeId ? ' is-on' : '');
@@ -967,6 +978,10 @@ function renderTopbar() {
   if (view === 'spolecne') {
     els.periodName.textContent = 'Společné nákupy';
     els.periodRange.textContent = people().map((x) => x.name).join(', ');
+  } else if (view === 'podnikani') {
+    const t = biz.topbar();
+    els.periodName.textContent = t.title;
+    els.periodRange.textContent = t.sub;
   } else if (prehled) {
     const n = data.periods.length;
     els.periodName.textContent = 'Všechna období';
@@ -1597,6 +1612,7 @@ function closeFloating() {
   if (spendPop?.matches(':popover-open')) spendPop.hidePopover();
   if (rowMenu?.matches(':popover-open')) rowMenu.hidePopover();
   if (picker?.matches(':popover-open')) picker.hidePopover();
+  biz?.closeDialogs();   // formulář drží záznam, který se teď vymění
 }
 
 function spendChanged() {
@@ -1812,7 +1828,7 @@ function renderSpendPop() {
 let rowMenu = null;
 let rowMenuOpener = null;
 
-function openRowMenu(anchor, item, { block, onMove, onSplit, onAuto, onDelete }) {
+function openRowMenu(anchor, item, { block, onMove, onSplit, onAuto, onDelete, onBiz }) {
   if (!rowMenu) {
     rowMenu = document.createElement('div');
     rowMenu.className = 'row-menu glass';
@@ -1865,6 +1881,20 @@ function openRowMenu(anchor, item, { block, onMove, onSplit, onAuto, onDelete })
     + '<em>Balíček, ze kterého utrácíš postupně – benzín, jídlo.</em></span>';
   split.addEventListener('click', () => { rowMenu.hidePopover(); onSplit(); });
 
+  // Kategorie Podnikání: zaplacený výdaj se zapíše i do záložky Podnikání.
+  let bizItem = null;
+  if (onBiz) {
+    bizItem = el('button', 'menu-item');
+    bizItem.type = 'button';
+    bizItem.setAttribute('role', 'menuitemcheckbox');
+    bizItem.setAttribute('aria-checked', String(!item.bizSkip));
+    bizItem.innerHTML =
+      '<span class="menu-mark" aria-hidden="true"><svg class="ico"><use href="#i-check"></use></svg></span>'
+      + '<span class="menu-text"><b>Zapisovat do Podnikání</b>'
+      + '<em>Po zaplacení se výdaj objeví v Podnikání a řekne si o doklad.</em></span>';
+    bizItem.addEventListener('click', () => { rowMenu.hidePopover(); onBiz(); });
+  }
+
   const del = document.createElement('button');
   del.type = 'button';
   del.className = 'menu-item is-danger';
@@ -1894,7 +1924,8 @@ function openRowMenu(anchor, item, { block, onMove, onSplit, onAuto, onDelete })
   });
   const sep = () => Object.assign(document.createElement('hr'), { className: 'menu-sep' });
 
-  rowMenu.replaceChildren(...(auto ? [auto] : []), split, ...(moves.length ? [sep(), moveHead, ...moves] : []), sep(), del);
+  rowMenu.replaceChildren(...(auto ? [auto] : []), split, ...(bizItem ? [bizItem] : []),
+    ...(moves.length ? [sep(), moveHead, ...moves] : []), sep(), del);
   rowMenu.showPopover();
   placePopover(rowMenu, anchor);
   (auto || split).focus();
@@ -2023,6 +2054,95 @@ function tableShell(headers) {
   return { wrap, table, tbody, tfoot };
 }
 
+/* ------------------------------------------------------------
+   Řádky, které počítá Podnikání
+   V měsíci se jen ukazují, mění se v záložce Podnikání. Zaškrtnout
+   „odloženo“ jde i tady – přepíše se to do Podnikání.
+   ------------------------------------------------------------ */
+function openBusiness() {
+  setView('podnikani');
+  renderAll();
+  scrollTo(0, 0);
+}
+
+function derivedCell(value, label) {
+  const td = el('td', 'cell-num num');
+  td.dataset.label = label;
+  const input = el('input', 'cell-input num is-derived');
+  input.type = 'text';
+  input.readOnly = true;
+  input.tabIndex = -1;
+  input.value = fmtNum(value);
+  input.placeholder = '–';
+  input.title = 'Počítá se v Podnikání';
+  input.setAttribute('aria-label', `${label}, počítá se v Podnikání`);
+  td.append(input);
+  return td;
+}
+
+function linkedTag(text, title) {
+  const tag = el('button', 'budget-tag biz-tag', text);
+  tag.type = 'button';
+  tag.title = title;
+  tag.addEventListener('click', openBusiness);
+  return tag;
+}
+
+function linkedIncomeRow(item, sa) {
+  const tr = el('tr', 'is-linked');
+  const td = el('td', 'cell-label');
+  const wrap = el('div', 'label-wrap');
+  const icon = el('span', 'item-icon');
+  icon.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#c-briefcase"></use></svg>';
+  wrap.append(icon, el('span', 'linked-label', item.label),
+    linkedTag('z Podnikání', 'Součet příjmů, které v tomhle období přišly (nebo mají splatnost). Kliknutím otevřeš Podnikání.'));
+  td.append(wrap);
+  tr.append(td, derivedCell(item.plan, 'Plán'));
+  if (sa) tr.append(derivedCell(item.actual, 'Skutečnost'), diffCell(item, 'income'));
+  tr.append(el('td', 'cell-del'));
+  return tr;
+}
+
+function linkedExpenseRow(item, sa) {
+  const tr = el('tr', 'is-linked');
+  const acc = accountById(item.account);
+  tr.style.setProperty('--tint', accColor(acc));
+  tr.classList.toggle('is-paid', !!item.paid);
+  const tintTd = el('td', 'col-tint');
+  const bar = el('span', 'tint-bar' + (acc && acc.parent ? ' is-child' : ''));
+  tintTd.append(bar);
+
+  const td = el('td', 'cell-label');
+  const wrap = el('div', 'label-wrap');
+  const check = el('label', 'pay-check');
+  check.title = item.paid ? `Odloženo ${fmtDate(item.paidAt)}` : 'Označit jako odložené';
+  const box = el('input');
+  box.type = 'checkbox';
+  box.checked = !!item.paid;
+  box.setAttribute('aria-label', `Odloženo – ${item.label}`);
+  box.addEventListener('change', () => {
+    snapshot();
+    setPaid(item, box.checked);
+    renderAll(); save();
+    toast(box.checked ? `${item.label}: odloženo.` : `${item.label}: odložení zrušené.`, 'Vrátit zpět', undo);
+  });
+  check.append(box, payBox());
+  const icon = el('span', 'item-icon');
+  icon.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#c-piggy"></use></svg>';
+  wrap.append(check, icon, el('span', 'linked-label', item.label),
+    linkedTag('z Podnikání', 'Rezerva na daně z platby v Podnikání. Částku počítá Podnikání.'));
+  td.append(wrap);
+
+  const accTd = el('td', 'cell-acc');
+  accTd.dataset.label = 'Kam';
+  accTd.append(el('span', 'linked-acc', acc ? accountLabel(acc) : '–'));
+
+  tr.append(tintTd, td, accTd, derivedCell(item.plan, 'Plán'));
+  if (sa) tr.append(derivedCell(item.actual, 'Skutečnost'), diffCell(item, 'expense'));
+  tr.append(el('td', 'cell-del'));
+  return tr;
+}
+
 function renderIncome() {
   const p = period();
   const sa = showActual();
@@ -2047,6 +2167,7 @@ function renderIncome() {
   }
 
   for (const item of p.income) {
+    if (item.link) { tbody.append(linkedIncomeRow(item, sa)); continue; }
     const tr = document.createElement('tr');
     const dc = sa ? diffCell(item, 'income') : null;
     const onChange = () => { if (dc) dc._update(); refresh(); };
@@ -2229,7 +2350,9 @@ function renderBlocks() {
       tbody.append(tr);
     }
 
+    const bizBlock = biz?.active() && biz.isBizBlock(block);
     for (const item of block.items) {
+      if (item.link) { tbody.append(linkedExpenseRow(item, sa)); continue; }
       const tr = document.createElement('tr');
       const acc = accountById(item.account);
       const tintTd = document.createElement('td');
@@ -2264,6 +2387,19 @@ function renderBlocks() {
       labelTd = labelCell(item, onChange, 'Např. Potraviny', () => { markRow(); refreshAll(); });
       tr.append(labelTd);
 
+      // Zaplacený výdaj z kategorie Podnikání je zapsaný i v Podnikání – chce doklad.
+      const bizExpense = bizBlock && !item.split && biz.expenseForItem(item.id);
+      if (bizExpense) {
+        const has = (bizExpense.files || []).length;
+        const tag = el('button', 'budget-tag biz-tag' + (has ? '' : ' is-missing'), has ? 'doklad' : 'přidat doklad');
+        tag.type = 'button';
+        tag.title = has
+          ? `Zapsáno v Podnikání jako ${bizExpense.no || 'výdaj'}, doklad je přiložený.`
+          : `Zapsáno v Podnikání jako ${bizExpense.no || 'výdaj'}. Přilož účtenku nebo fakturu.`;
+        tag.addEventListener('click', () => biz.openExpenseForItem(item.id));
+        $('.label-wrap', labelTd).append(tag);
+      }
+
       const accTd = document.createElement('td');
       accTd.className = 'cell-acc';
       accTd.dataset.label = 'Kam';
@@ -2290,6 +2426,14 @@ function renderBlocks() {
 
       tr.append(menuCell(item, {
         block,
+        onBiz: bizBlock ? () => {
+          snapshot();
+          if (item.bizSkip) delete item.bizSkip; else item.bizSkip = true;
+          renderAll(); save();
+          toast(item.bizSkip
+            ? `${item.label || 'Položka'} se do Podnikání nezapisuje.`
+            : `${item.label || 'Položka'} se po zaplacení zapíše do Podnikání.`, 'Vrátit zpět', undo);
+        } : null,
         onMove: (target) => {
           snapshot();
           block.items = block.items.filter((x) => x !== item);
@@ -2788,7 +2932,7 @@ function guessBudget(label, iso) {
 const adjustOf = (it) => (it.adjust || []).reduce((s, a) => s + (a.amount || 0), 0);
 
 function rentOptions(p) {
-  return p ? allItems(p).filter((it) => !it.split) : [];
+  return p ? allItems(p).filter((it) => !it.split && !it.link) : [];
 }
 function guessRentItem(p) {
   const items = rentOptions(p);
@@ -3423,6 +3567,8 @@ function openSettle(pid) {
 function renderAll() {
   document.body.classList.toggle('no-actual', !showActual());
   ensureShared();
+  // Podnikání mohlo změnit řádky v měsíci (a naopak) – srovnat a uložit.
+  if (biz?.reconcile()) save();
   renderRail();
   renderTopbar();
   if (view === 'mesic') {
@@ -3434,6 +3580,8 @@ function renderAll() {
     renderCategories();
   } else if (view === 'spolecne') {
     renderShared();
+  } else if (view === 'podnikani') {
+    biz.render();
   } else {
     renderOverview();
     renderSplit();
@@ -3445,6 +3593,8 @@ function setView(next) {
   els.viewMesic.hidden = next !== 'mesic';
   els.viewPrehled.hidden = next !== 'prehled';
   els.viewSpolecne.hidden = next !== 'spolecne';
+  els.viewPodnikani.hidden = next !== 'podnikani';
+  document.body.dataset.view = next;
   $$('.rail-tab').forEach((t) => t.classList.toggle('is-on', t.dataset.view === next));
 }
 
@@ -3539,6 +3689,9 @@ periodForm.addEventListener('submit', (e) => {
       created = clone(source);
       created.id = uid();
       created.name = name; created.from = from; created.to = to;
+      // Řádky z Podnikání patří jen svému období, nové si založí samo.
+      created.income = created.income.filter((i) => !i.link);
+      created.blocks.forEach((b) => { b.items = b.items.filter((i) => !i.link); });
       created.income.forEach((i) => {
         i.id = uid();
         i.actual = null;
@@ -3852,7 +4005,10 @@ $('#syncForm').addEventListener('submit', async (e) => {
   $('#syncToken').value = '';
   renderSyncSettings();
   await syncNow();
-  if (syncState.status === 'ok') toast('Připojeno. Změny se teď synchronizují samy.');
+  if (syncState.status === 'ok') {
+    toast('Připojeno. Změny se teď synchronizují samy.');
+    biz?.afterSync({ first: true }).catch(() => {});   // i doklady, které vznikly bez synchronizace
+  }
   renderSyncSettings();
 });
 $('#syncNowBtn').addEventListener('click', () => syncNow());
@@ -3887,6 +4043,14 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
   }
   applyTheme(data.settings.theme || 'system');
   els.actualToggle.checked = showActual();
+
+  biz = createBusiness({
+    get data() { return data; },
+    get storageMode() { return storageMode; },
+    save, renderAll, toast, snapshot, undo, skloneni, download,
+    fmtCzk, fmtDate, parseNum, todayIso, uid,
+    confirmDelete, closeRail, syncConfig, syncNow: () => syncNow(),
+  });
 
   // Tužka pro úpravu období vedle názvu.
   const pencil = document.createElement('button');

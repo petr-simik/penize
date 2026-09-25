@@ -33,6 +33,9 @@
   <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M4.5 11a7.5 7.5 0 0 1 13-4.6L19.5 8.5"/><path d="M19.5 4v4.5H15"/><path d="M19.5 13a7.5 7.5 0 0 1-13 4.6L4.5 15.5"/><path d="M4.5 20v-4.5H9"/></symbol>
   <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7.5 18.5a4 4 0 0 1-.4-8A5.2 5.2 0 0 1 17 9.8a3.9 3.9 0 0 1-.5 8.7Z"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="m20 11.5-7.8 7.8a5 5 0 0 1-7.1-7.1l8.2-8.2a3.3 3.3 0 0 1 4.7 4.7l-8.1 8.1a1.7 1.7 0 0 1-2.4-2.4l7.3-7.3"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5.5M12 16.4v.1"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3.5H7.5A1.5 1.5 0 0 0 6 5v14a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 18 19V7.5Z"/><path d="M14 3.5v4h4M9 13h6M9 16.5h4"/></symbol>
 
   <!-- ikony položek: jedna stopová rodina, 1.7px, zaoblené konce -->
   <symbol id="c-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.6"/></symbol>
@@ -91,10 +94,23 @@
       </button>
     </div>
 
-    <nav class="rail-nav" aria-label="Zobrazení">
-      <button type="button" class="rail-tab is-on" data-view="mesic">Měsíc</button>
-      <button type="button" class="rail-tab" data-view="prehled">Období</button>
-      <button type="button" class="rail-tab" data-view="spolecne">Společné</button>
+    <nav class="rail-views" aria-label="Zobrazení">
+      <div class="rail-group">
+        <p class="rail-title" id="railOsobni">Osobní peníze</p>
+        <div class="rail-nav" role="group" aria-labelledby="railOsobni">
+          <button type="button" class="rail-tab is-on" data-view="mesic">Měsíc</button>
+          <button type="button" class="rail-tab" data-view="prehled">Období</button>
+          <button type="button" class="rail-tab" data-view="spolecne">Společné</button>
+        </div>
+      </div>
+      <div class="rail-group">
+        <p class="rail-title">Živnost</p>
+        <button type="button" class="rail-tab rail-biz" data-view="podnikani">
+          <svg class="ico" aria-hidden="true"><use href="#c-briefcase"></use></svg>
+          <span>Podnikání</span>
+          <svg class="ico rail-biz-go" aria-hidden="true"><use href="#i-chevron"></use></svg>
+        </button>
+      </div>
     </nav>
 
     <div class="rail-section">
@@ -249,6 +265,9 @@
           </details>
         </section>
       </div>
+
+      <!-- ===== POHLED: PODNIKÁNÍ (obsah vykresluje podnikani.js) ===== -->
+      <div id="viewPodnikani" hidden></div>
 
       <!-- ===== POHLED: VŠECHNA OBDOBÍ ===== -->
       <div id="viewPrehled" hidden>
